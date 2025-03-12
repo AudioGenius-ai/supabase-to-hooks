@@ -61,8 +61,9 @@ export function formatTypeDefinition(typeText: string): string {
 export function findBaseTypes(typeText: string): Set<string> {
   const baseTypes = new Set<string>();
   
-  // Extract any reference to database.types.Json or similar types
-  const regex = /import\(".*\/moku\/lib\/database\.types"\)\.(\w+)/g;
+  // Extract any reference to imported database types using a generic pattern
+  // This matches any import path that ends with database.types
+  const regex = /import\(".*database\.types(?:\.ts)?"\)\.(\w+)/g;
   let match;
   
   while ((match = regex.exec(typeText)) !== null) {
