@@ -18,15 +18,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ${pascalTableName}Row, ${pascalTableName}Insert, ${pascalTableName}Update, ${pascalTableName}FilterParams } from './types';
 import { supabase } from '${supabaseImportPath}';
 
-// Type-safe Object.entries helper
-type Entries<T> = {
-  [K in keyof T]: [K, T[K]];
-}[keyof T][];
-
-function typedEntries<T extends object>(obj: T): Entries<T> {
-  return Object.entries(obj) as Entries<T>;
-}
-
 // Query keys
 const ${camelTableName}Keys = {
   all: ['${tableName}'] as const,
@@ -48,32 +39,34 @@ export function useGet${pascalTableName}(filters: ${pascalTableName}FilterParams
         // Define special parameters that shouldn't be used as column filters
         const specialParams = ['limit', 'offset', 'order'];
         
-        // Process filters with full type safety
-        typedEntries(filters).forEach(([key, value]) => {
+        // Process filters with type safety
+        Object.keys(filters).forEach((key) => {
           // Skip special parameters that aren't actual columns
-          if (specialParams.includes(key as string)) {
+          if (specialParams.includes(key)) {
             return;
           }
+          
+          const value = filters[key as keyof typeof filters];
           
           if (value === undefined) {
             return;
           }
           
           if (value === null) {
-            query = query.is(key as string, null);
+            query = query.is(key, null);
             return;
           }
           
           // Handle array values for 'in' filters
           if (Array.isArray(value)) {
             if (value.length > 0) {
-              query = query.in(key as string, value);
+              query = query.in(key, value);
             }
             return;
           }
           
           // Handle regular equality filters
-          query = query.eq(key as string, value);
+          query = query.eq(key, value);
         });
         
         // Apply limit if specified
