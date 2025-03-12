@@ -1,0 +1,10 @@
+{
+  "input": "./lib/database.types.ts",
+  "output": "./lib/database",
+  "tsConfig": "./tsconfig.json",
+  "supabasePath": "@/lib/supabase",
+  "options": {
+    "includeStorage": true,
+    "skipEnums": false
+  }
+} 

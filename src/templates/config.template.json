@@ -1,0 +1,9 @@
+{
+  "input": "./lib/database.types.ts",
+  "output": "./lib/database",
+  "tsConfig": "./tsconfig.json",
+  "options": {
+    "includeStorage": true,
+    "skipEnums": false
+  }
+} 

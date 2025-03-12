@@ -1,0 +1,72 @@
+{
+  "name": "supabase-to-hooks",
+  "version": "0.1.0",
+  "description": "A CLI tool that generates React Query hooks from Supabase database types",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "supabase-to-hooks": "./bin/supabase-to-hooks.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepare": "npm run clean && npm run build",
+    "prepublishOnly": "npm run lint",
+    "test": "jest",
+    "test:basic": "jest tests/basic.test.ts tests/extractor.basic.test.ts",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [
+    "supabase",
+    "react-query",
+    "typescript",
+    "hooks",
+    "cli",
+    "generator"
+  ],
+  "author": "Sami Shukri",
+  "license": "MIT",
+  "private": false,
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "ts-morph": "^25.0.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/mock-fs": "^4.13.4",
+    "@types/node": "^20.11.20",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jest-mock-extended": "^4.0.0-beta1",
+    "memfs": "^4.7.0",
+    "mock-fs": "^5.5.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/supabase-to-hooks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/supabase-to-hooks/issues"
+  },
+  "homepage": "https://github.com/yourusername/supabase-to-hooks#readme"
+}
