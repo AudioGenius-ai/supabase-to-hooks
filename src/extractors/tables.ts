@@ -84,10 +84,11 @@ export function extractTableTypes(tableName: string, tableType: Type, moduleDir:
   const formattedInsertType = formatTypeDefinition(insertTypeStr);
   const formattedUpdateType = formatTypeDefinition(updateTypeStr);
   
-  // Clean up absolute imports in type strings
-  const cleanRowType = formattedRowType.replace(/import\(".*\/moku\/lib\/database\.types"\)\./g, '');
-  const cleanInsertType = formattedInsertType.replace(/import\(".*\/moku\/lib\/database\.types"\)\./g, '');
-  const cleanUpdateType = formattedUpdateType.replace(/import\(".*\/moku\/lib\/database\.types"\)\./g, '');
+  // Clean up absolute imports in type strings using a generic pattern
+  const importRegex = /import\(".*database\.types(?:\.ts)?"\)\./g;
+  const cleanRowType = formattedRowType.replace(importRegex, '');
+  const cleanInsertType = formattedInsertType.replace(importRegex, '');
+  const cleanUpdateType = formattedUpdateType.replace(importRegex, '');
 
   // We'll write types to a types.ts file in the module directory
   const typesFilePath = path.join(moduleDir, 'types.ts');
