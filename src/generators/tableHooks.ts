@@ -102,6 +102,87 @@ export function useGet${pascalTableName}(filters: ${pascalTableName}FilterParams
   });
 }
 
+// Lazy version - only fetches when the fetch function is called
+export function useLazyGet${pascalTableName}() {
+  const queryClient = useQueryClient();
+  
+  const fetchData = async (filters: ${pascalTableName}FilterParams = {}) => {
+    let query = supabase.from('${tableName}').select('*');
+    
+    // Apply filters
+    if (filters) {
+      // Define special parameters that shouldn't be used as column filters
+      const specialParams = ['limit', 'offset', 'order'];
+      
+      // Process filters with type safety
+      Object.keys(filters).forEach((key) => {
+        // Skip special parameters that aren't actual columns
+        if (specialParams.includes(key)) {
+          return;
+        }
+        
+        const value = filters[key as keyof typeof filters];
+        
+        if (value === undefined) {
+          return;
+        }
+        
+        if (value === null) {
+          query = query.is(key, null);
+          return;
+        }
+        
+        // Handle array values for 'in' filters
+        if (Array.isArray(value)) {
+          if (value.length > 0) {
+            query = query.in(key, value);
+          }
+          return;
+        }
+        
+        // Handle regular equality filters
+        query = query.eq(key, value);
+      });
+      
+      // Apply limit if specified
+      if (filters.limit !== undefined) {
+        query = query.limit(filters.limit);
+      }
+      
+      // Apply offset if specified  
+      if (filters.offset !== undefined) {
+        query = query.range(
+          filters.offset, 
+          filters.limit !== undefined ? filters.offset + filters.limit - 1 : filters.offset + 9
+        );
+      }
+      
+      // Apply ordering if specified
+      if (filters.order && filters.order.column) {
+        query = query.order(
+          filters.order.column as string,
+          { ascending: filters.order.direction !== 'desc' }
+        );
+      }
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    const result = data as ${pascalTableName}Row[];
+    
+    // Update the cache with the fetched data
+    queryClient.setQueryData(${camelTableName}Keys.list(filters), result);
+    
+    return result;
+  };
+  
+  return { fetch: fetchData };
+}
+
 // Get a single ${tableName} by ID
 export function useGet${pascalTableName}ById(id: string | undefined) {
   return useQuery({
@@ -121,6 +202,32 @@ export function useGet${pascalTableName}ById(id: string | undefined) {
       return data as ${pascalTableName}Row;
     }
   });
+}
+
+// Lazy version - only fetches when the fetch function is called
+export function useLazyGet${pascalTableName}ById() {
+  const queryClient = useQueryClient();
+  
+  const fetchData = async (id: string) => {
+    const { data, error } = await supabase
+      .from('${tableName}')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    const result = data as ${pascalTableName}Row;
+    
+    // Update the cache with the fetched data
+    queryClient.setQueryData(${camelTableName}Keys.detail(id), result);
+    
+    return result;
+  };
+  
+  return { fetch: fetchData };
 }
 
 // Create a new ${tableName}
