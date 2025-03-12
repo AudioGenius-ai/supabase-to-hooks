@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "supabase-to-hooks": "./bin/supabase-to-hooks.js"
+    "supabase-to-hooks": "bin/supabase-to-hooks.js"
   },
   "files": [
     "dist",
@@ -17,7 +17,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rimraf dist",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint ./src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepare": "npm run clean && npm run build",
     "prepublishOnly": "npm run lint",
@@ -63,10 +63,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/supabase-to-hooks.git"
+    "url": "git+https://github.com/samishukri/supabase-to-hooks.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/supabase-to-hooks/issues"
+    "url": "https://github.com/samishukri/supabase-to-hooks/issues"
   },
-  "homepage": "https://github.com/yourusername/supabase-to-hooks#readme"
+  "homepage": "https://github.com/samishukri/supabase-to-hooks#readme"
 }

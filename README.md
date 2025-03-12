@@ -16,13 +16,21 @@ A CLI tool that automatically generates React Query hooks from your Supabase dat
 ### Global Installation
 
 ```bash
+# Using npm
 npm install -g supabase-to-hooks
+
+# Using yarn
+yarn global add supabase-to-hooks
 ```
 
 ### Project Installation
 
 ```bash
+# Using npm
 npm install --save-dev supabase-to-hooks
+
+# Using yarn
+yarn add --dev supabase-to-hooks
 ```
 
 ## Usage
@@ -30,7 +38,14 @@ npm install --save-dev supabase-to-hooks
 ### Command Line
 
 ```bash
+# Using globally installed package
 supabase-to-hooks --input ./path/to/database.types.ts --output ./path/to/output-directory
+
+# Using npx (no installation required)
+npx supabase-to-hooks --input ./path/to/database.types.ts --output ./path/to/output-directory
+
+# Using yarn
+yarn supabase-to-hooks --input ./path/to/database.types.ts --output ./path/to/output-directory
 ```
 
 ### Options
@@ -40,6 +55,7 @@ supabase-to-hooks --input ./path/to/database.types.ts --output ./path/to/output-
 | `--input` | `-i` | Path to database.types.ts file | ./lib/database.types.ts |
 | `--output` | `-o` | Output directory for generated files | ./lib/database |
 | `--ts-config` | | Path to tsconfig.json file | ./tsconfig.json |
+| `--supabase-path` | | Import path for the Supabase client | @/lib/supabase |
 | `--config` | `-c` | Path to config file (JSON) | |
 | `--help` | `-h` | Display help information | |
 | `--version` | `-v` | Display version information | |
@@ -52,14 +68,22 @@ You can also create a JSON configuration file to specify options:
 {
   "input": "./path/to/database.types.ts",
   "output": "./path/to/output-directory",
-  "tsConfig": "./tsconfig.json"
+  "tsConfig": "./tsconfig.json",
+  "supabasePath": "@/lib/supabase"
 }
 ```
 
 Then run with:
 
 ```bash
+# Using npm/globally installed
 supabase-to-hooks --config ./path/to/config.json
+
+# Using npx
+npx supabase-to-hooks --config ./path/to/config.json
+
+# Using yarn
+yarn supabase-to-hooks --config ./path/to/config.json
 ```
 
 ## Generated Structure

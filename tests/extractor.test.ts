@@ -3,7 +3,6 @@ import * as path from 'path';
 import { run } from '../src/extractor';
 import { createDatabaseTypeMock } from './mocks/ts-morph.mock';
 import { 
-  setupMockFileSystem, 
   cleanupMockFileSystem, 
   getMockFileContent,
   setupBasicMockFiles,

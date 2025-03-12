@@ -1,6 +1,5 @@
 import { Type } from 'ts-morph';
 import * as fs from 'fs';
-import * as path from 'path';
 import { findBaseTypes, getTypeProperty, typeToString } from '../utils/helpers';
 
 /**
