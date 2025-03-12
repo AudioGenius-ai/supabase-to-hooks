@@ -1,6 +1,6 @@
 {
   "name": "supabase-to-hooks",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A CLI tool that generates React Query hooks from Supabase database types",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
