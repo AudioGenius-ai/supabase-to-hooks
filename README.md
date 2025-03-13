@@ -10,6 +10,8 @@ A CLI tool that automatically generates React Query hooks from your Supabase dat
 - 🗄️ Includes storage hooks for Supabase Storage
 - 📦 Clean module structure for better code organization
 - ⚡ Strongly typed with full TypeScript support
+- 🔑 Support for tables with custom primary key column names
+- ⚙️ Full access to React Query options for all hooks
 
 ## Installation
 
@@ -108,7 +110,7 @@ output-directory/
 ## Example Usage in Your React Application
 
 ```tsx
-import { useGetUsers, useCreateUser, useUpdateUser, useDeleteUser } from './lib/database/users';
+import { useGetUsers, useCreateUser, useUpdateUser, useDeleteUser, useGetUserByPrimaryKey } from './lib/database/users';
 
 function UsersList() {
   // Get all users
@@ -117,8 +119,11 @@ function UsersList() {
   // Get users with filters
   const { data: activeUsers } = useGetUsers({ is_active: true });
   
-  // Get a specific user
+  // Get a specific user by ID (assuming 'id' is the primary key)
   const { data: user } = useGetUserById('user-id-123');
+  
+  // Get a user by a custom primary key column
+  const { data: userByEmail } = useGetUserByPrimaryKey('email', 'user@example.com');
   
   // Create a user
   const createUser = useCreateUser();
@@ -135,6 +140,58 @@ function UsersList() {
   
   // ... rest of your component
 }
+```
+
+### Passing React Query Options
+
+All generated hooks accept React Query options as their last parameter:
+
+```tsx
+// Query hooks with options
+const { data: users } = useGetUsers(
+  { is_active: true }, // Filters
+  { 
+    staleTime: 60000,  // 1 minute
+    refetchOnWindowFocus: false,
+    onSuccess: (data) => console.log('Data fetched successfully', data)
+  }
+);
+
+// Mutation hooks with options
+const updateUser = useUpdateUser({
+  onSuccess: (data) => {
+    console.log('User updated successfully', data);
+    showSuccessToast('User updated!');
+  },
+  onError: (error) => {
+    console.error('Failed to update user', error);
+    showErrorToast('Update failed');
+  }
+});
+```
+
+### Working with Custom Primary Keys
+
+For tables that don't use 'id' as their primary key column, use the dedicated primary key hooks:
+
+```tsx
+// Get by primary key
+const { data: product } = useGetProductByPrimaryKey('product_code', 'PROD-123');
+
+// Update by primary key
+const updateProductByCode = useUpdateProductByPrimaryKey();
+updateProductByCode.mutate({
+  primaryKeyColumn: 'product_code',
+  value: 'PROD-123',
+  data: { name: 'Updated Product', price: 99.99 }
+});
+
+// Delete by primary key
+const deleteProductByCode = useDeleteProductByPrimaryKey();
+deleteProductByCode.mutate({
+  primaryKeyColumn: 'product_code',
+  value: 'PROD-123'
+});
 ```
 
 ## Pre-requisites

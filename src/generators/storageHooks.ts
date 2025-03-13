@@ -177,7 +177,7 @@ export interface Bucket {
  */
 function generateStorageHooks(moduleDir: string, supabaseImportPath: string = '@/lib/supabase') {
   const hooksContent = `
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, QueryOptions, MutationOptions } from '@tanstack/react-query';
 import { supabase } from '${supabaseImportPath}';
 import { 
   FileObject, 
@@ -202,7 +202,9 @@ const storageKeys = {
 /**
  * Hook to list all storage buckets
  */
-export function useListBuckets() {
+export function useListBuckets(
+  options?: Omit<QueryOptions<Bucket[], Error>, 'queryKey' | 'queryFn'>
+) {
   return useQuery({
     queryKey: storageKeys.buckets(),
     queryFn: async () => {
@@ -213,14 +215,18 @@ export function useListBuckets() {
       }
       
       return data as Bucket[];
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to get a specific bucket
  */
-export function useGetBucket(name: string) {
+export function useGetBucket(
+  name: string,
+  options?: Omit<QueryOptions<Bucket, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+) {
   return useQuery({
     queryKey: storageKeys.bucket(name),
     enabled: !!name,
@@ -232,14 +238,17 @@ export function useGetBucket(name: string) {
       }
       
       return data as Bucket;
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to create a new bucket
  */
-export function useCreateBucket() {
+export function useCreateBucket(
+  options?: Omit<MutationOptions<any, Error, { name: string; isPublic?: boolean }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -257,14 +266,17 @@ export function useCreateBucket() {
     onSuccess: () => {
       // Invalidate buckets list
       queryClient.invalidateQueries({ queryKey: storageKeys.buckets() });
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to update bucket settings
  */
-export function useUpdateBucket() {
+export function useUpdateBucket(
+  options?: Omit<MutationOptions<any, Error, { id: string; options: { public: boolean } }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -281,14 +293,17 @@ export function useUpdateBucket() {
       // Invalidate the specific bucket
       queryClient.invalidateQueries({ queryKey: storageKeys.bucket(variables.id) });
       queryClient.invalidateQueries({ queryKey: storageKeys.buckets() });
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to delete a bucket
  */
-export function useDeleteBucket() {
+export function useDeleteBucket(
+  options?: Omit<MutationOptions<any, Error, string, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -305,14 +320,19 @@ export function useDeleteBucket() {
       // Invalidate the specific bucket and buckets list
       queryClient.invalidateQueries({ queryKey: storageKeys.bucket(name) });
       queryClient.invalidateQueries({ queryKey: storageKeys.buckets() });
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to list files within a bucket
  */
-export function useListFiles(bucket: string, options: ListOptions = {}) {
+export function useListFiles(
+  bucket: string, 
+  options: ListOptions = {},
+  queryOptions?: Omit<QueryOptions<FileObject[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
+) {
   return useQuery({
     queryKey: storageKeys.list(bucket, options),
     enabled: !!bucket,
@@ -332,14 +352,20 @@ export function useListFiles(bucket: string, options: ListOptions = {}) {
       }
       
       return data as FileObject[];
-    }
+    },
+    ...queryOptions
   });
 }
 
 /**
  * Hook to get the URL for a file
  */
-export function useGetPublicUrl(bucket: string, path: string, options: GetURLOptions = {}) {
+export function useGetPublicUrl(
+  bucket: string, 
+  path: string, 
+  options: GetURLOptions = {},
+  queryOptions?: Omit<QueryOptions<string, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+) {
   return useQuery({
     queryKey: [...storageKeys.file(bucket, path), 'url', options],
     enabled: !!bucket && !!path,
@@ -349,14 +375,18 @@ export function useGetPublicUrl(bucket: string, path: string, options: GetURLOpt
         .getPublicUrl(path, options);
       
       return data.publicUrl;
-    }
+    },
+    ...queryOptions
   });
 }
 
 /**
  * Hook to upload a file to storage
  */
-export function useUploadFile(bucket: string) {
+export function useUploadFile(
+  bucket: string,
+  options?: Omit<MutationOptions<any, Error, { file: File; options?: UploadOptions }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -400,14 +430,18 @@ export function useUploadFile(bucket: string) {
       queryClient.invalidateQueries({ 
         queryKey: storageKeys.list(variables.bucket, { path: folderPath })
       });
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to download a file
  */
-export function useDownloadFile(bucket: string) {
+export function useDownloadFile(
+  bucket: string,
+  options?: Omit<MutationOptions<Blob, Error, string, unknown>, 'mutationFn'>
+) {
   return useMutation({
     mutationFn: async (path: string) => {
       const { data, error } = await supabase.storage
@@ -419,14 +453,18 @@ export function useDownloadFile(bucket: string) {
       }
       
       return data;
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to delete files
  */
-export function useDeleteFiles(bucket: string) {
+export function useDeleteFiles(
+  bucket: string,
+  options?: Omit<MutationOptions<any, Error, string[], unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -457,14 +495,18 @@ export function useDeleteFiles(bucket: string) {
           queryKey: storageKeys.list(bucket, { path: folder })
         });
       });
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to move a file
  */
-export function useMoveFile(bucket: string) {
+export function useMoveFile(
+  bucket: string,
+  options?: Omit<MutationOptions<any, Error, { sourcePath: string; options: MoveOptions }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -497,14 +539,18 @@ export function useMoveFile(bucket: string) {
           queryKey: storageKeys.list(bucket, { path: destFolder })
         });
       }
-    }
+    },
+    ...options
   });
 }
 
 /**
  * Hook to copy a file
  */
-export function useCopyFile(bucket: string) {
+export function useCopyFile(
+  bucket: string,
+  options?: Omit<MutationOptions<any, Error, { sourcePath: string; options: MoveOptions }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -530,7 +576,8 @@ export function useCopyFile(bucket: string) {
       queryClient.invalidateQueries({ 
         queryKey: storageKeys.list(bucket, { path: destFolder })
       });
-    }
+    },
+    ...options
   });
 }
 `;

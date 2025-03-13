@@ -14,7 +14,7 @@ export function generateTableHooks(
   const pascalTableName = pascalCase(tableName);
   
   const hooksContent = `
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, QueryOptions, MutationOptions } from '@tanstack/react-query';
 import { ${pascalTableName}Row, ${pascalTableName}Insert, ${pascalTableName}Update, ${pascalTableName}FilterParams } from './types';
 import { supabase } from '${supabaseImportPath}';
 
@@ -25,10 +25,14 @@ const ${camelTableName}Keys = {
   list: (filters: ${pascalTableName}FilterParams) => [...${camelTableName}Keys.lists(), filters] as const,
   details: () => [...${camelTableName}Keys.all, 'detail'] as const,
   detail: (id: string) => [...${camelTableName}Keys.details(), id] as const,
+  primaryKey: (primaryKeyColumn: string, value: string | number) => [...${camelTableName}Keys.details(), primaryKeyColumn, value] as const,
 };
 
 // Get all ${tableName}
-export function useGet${pascalTableName}(filters: ${pascalTableName}FilterParams = {}) {
+export function useGet${pascalTableName}(
+  filters: ${pascalTableName}FilterParams = {}, 
+  options?: Omit<QueryOptions<${pascalTableName}Row[], Error>, 'queryKey' | 'queryFn'>
+) {
   return useQuery({
     queryKey: ${camelTableName}Keys.list(filters),
     queryFn: async () => {
@@ -98,7 +102,8 @@ export function useGet${pascalTableName}(filters: ${pascalTableName}FilterParams
       }
       
       return data as ${pascalTableName}Row[];
-    }
+    },
+    ...options
   });
 }
 
@@ -183,8 +188,11 @@ export function useLazyGet${pascalTableName}() {
   return { fetch: fetchData };
 }
 
-// Get a single ${tableName} by ID
-export function useGet${pascalTableName}ById(id: string | undefined) {
+// Get a single ${tableName} by ID (assumes primary key is 'id')
+export function useGet${pascalTableName}ById(
+  id: string | undefined,
+  options?: Omit<QueryOptions<${pascalTableName}Row, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+) {
   return useQuery({
     queryKey: ${camelTableName}Keys.detail(id || ''),
     enabled: !!id,
@@ -200,7 +208,34 @@ export function useGet${pascalTableName}ById(id: string | undefined) {
       }
       
       return data as ${pascalTableName}Row;
-    }
+    },
+    ...options
+  });
+}
+
+// Get a single ${tableName} by any primary key
+export function useGet${pascalTableName}ByPrimaryKey<T extends string | number>(
+  primaryKeyColumn: string,
+  value: T | undefined,
+  options?: Omit<QueryOptions<${pascalTableName}Row, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+) {
+  return useQuery({
+    queryKey: ${camelTableName}Keys.primaryKey(primaryKeyColumn, value?.toString() || ''),
+    enabled: !!value,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('${tableName}')
+        .select('*')
+        .eq(primaryKeyColumn, value)
+        .single();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return data as ${pascalTableName}Row;
+    },
+    ...options
   });
 }
 
@@ -230,8 +265,36 @@ export function useLazyGet${pascalTableName}ById() {
   return { fetch: fetchData };
 }
 
+// Lazy version for fetching by primary key - only fetches when the fetch function is called
+export function useLazyGet${pascalTableName}ByPrimaryKey() {
+  const queryClient = useQueryClient();
+  
+  const fetchData = async <T extends string | number>(primaryKeyColumn: string, value: T) => {
+    const { data, error } = await supabase
+      .from('${tableName}')
+      .select('*')
+      .eq(primaryKeyColumn, value)
+      .single();
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    const result = data as ${pascalTableName}Row;
+    
+    // Update the cache with the fetched data
+    queryClient.setQueryData(${camelTableName}Keys.primaryKey(primaryKeyColumn, value.toString()), result);
+    
+    return result;
+  };
+  
+  return { fetch: fetchData };
+}
+
 // Create a new ${tableName}
-export function useCreate${pascalTableName}() {
+export function useCreate${pascalTableName}(
+  options?: Omit<MutationOptions<${pascalTableName}Row, Error, ${pascalTableName}Insert, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -251,12 +314,15 @@ export function useCreate${pascalTableName}() {
     onSuccess: () => {
       // Invalidate all queries for this table
       queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.all });
-    }
+    },
+    ...options
   });
 }
 
-// Update an existing ${tableName}
-export function useUpdate${pascalTableName}() {
+// Update an existing ${tableName} by ID
+export function useUpdate${pascalTableName}(
+  options?: Omit<MutationOptions<${pascalTableName}Row, Error, { id: string; data: ${pascalTableName}Update }, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -278,12 +344,47 @@ export function useUpdate${pascalTableName}() {
       // Invalidate specific queries
       queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.detail(data.id) });
       queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
-    }
+    },
+    ...options
   });
 }
 
-// Delete a ${tableName}
-export function useDelete${pascalTableName}() {
+// Update ${tableName} by any primary key
+export function useUpdate${pascalTableName}ByPrimaryKey<T extends string | number>(
+  options?: Omit<MutationOptions<${pascalTableName}Row, Error, { primaryKeyColumn: string; value: T; data: ${pascalTableName}Update }, unknown>, 'mutationFn'>
+) {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ primaryKeyColumn, value, data }: { primaryKeyColumn: string; value: T; data: ${pascalTableName}Update }) => {
+      const { data: updatedData, error } = await supabase
+        .from('${tableName}')
+        .update(data)
+        .eq(primaryKeyColumn, value)
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return updatedData as ${pascalTableName}Row;
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate specific queries
+      queryClient.invalidateQueries({ 
+        queryKey: ${camelTableName}Keys.primaryKey(variables.primaryKeyColumn, variables.value.toString())
+      });
+      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
+    },
+    ...options
+  });
+}
+
+// Delete a ${tableName} by ID
+export function useDelete${pascalTableName}(
+  options?: Omit<MutationOptions<string, Error, string, unknown>, 'mutationFn'>
+) {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -303,7 +404,38 @@ export function useDelete${pascalTableName}() {
       // Invalidate specific queries
       queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.detail(id) });
       queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
-    }
+    },
+    ...options
+  });
+}
+
+// Delete ${tableName} by any primary key
+export function useDelete${pascalTableName}ByPrimaryKey<T extends string | number>(
+  options?: Omit<MutationOptions<{ primaryKeyColumn: string; value: T }, Error, { primaryKeyColumn: string; value: T }, unknown>, 'mutationFn'>
+) {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ primaryKeyColumn, value }: { primaryKeyColumn: string; value: T }) => {
+      const { error } = await supabase
+        .from('${tableName}')
+        .delete()
+        .eq(primaryKeyColumn, value);
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return { primaryKeyColumn, value };
+    },
+    onSuccess: (result) => {
+      // Invalidate specific queries
+      queryClient.invalidateQueries({ 
+        queryKey: ${camelTableName}Keys.primaryKey(result.primaryKeyColumn, result.value.toString())
+      });
+      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
+    },
+    ...options
   });
 }
 `.trim();
