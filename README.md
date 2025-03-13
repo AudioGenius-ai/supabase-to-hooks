@@ -12,6 +12,7 @@ A CLI tool that automatically generates React Query hooks from your Supabase dat
 - ⚡ Strongly typed with full TypeScript support
 - 🔑 Support for tables with custom primary key column names
 - ⚙️ Full access to React Query options for all hooks
+- 🔗 Dynamic table joins at runtime with proper TypeScript types
 
 ## Installation
 
@@ -193,6 +194,61 @@ deleteProductByCode.mutate({
   value: 'PROD-123'
 });
 ```
+
+### Dynamic Table Joins
+
+You can specify table joins at runtime to fetch related data:
+
+```tsx
+// Type for the joined data (optional but provides better type safety)
+interface UserWithPosts {
+  posts: {
+    id: string;
+    title: string;
+    content: string;
+  }[];
+}
+
+// Get a user with their posts
+const { data: userWithPosts } = useGetUserById<UserWithPosts>(
+  'user-123',
+  {
+    // Select specific fields from the user table and join the posts relation
+    select: 'id, name, email, posts(id, title, content)'
+  }
+);
+
+// Now you can access the joined data with full type safety
+if (userWithPosts) {
+  console.log(userWithPosts.name); // User's name
+  console.log(userWithPosts.posts[0]?.title); // First post's title
+}
+
+// Get all users with their posts and comments (nested joins)
+const { data: usersWithPostsAndComments } = useGetUsers<{
+  posts: {
+    id: string;
+    title: string;
+    comments: {
+      id: string;
+      text: string;
+    }[];
+  }[];
+}>(
+  {}, // No filters
+  { 
+    select: 'id, name, email, posts(id, title, comments(id, text))'
+  }
+);
+```
+
+The `select` option supports the full Supabase syntax for joins:
+
+- `'*'` - Select all fields from the table
+- `'id, name, email'` - Select only specific fields
+- `'*, posts(*)'` - Select all fields and join the posts relation with all fields
+- `'id, name, posts(id, title)'` - Select specific fields and join with specific related fields
+- `'id, posts(id, title, comments(*))'` - Nested joins for related tables
 
 ## Pre-requisites
 

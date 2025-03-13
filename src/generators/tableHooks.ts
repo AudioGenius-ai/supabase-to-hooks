@@ -18,25 +18,56 @@ import { useQuery, useMutation, useQueryClient, QueryOptions, MutationOptions } 
 import { ${pascalTableName}Row, ${pascalTableName}Insert, ${pascalTableName}Update, ${pascalTableName}FilterParams } from './types';
 import { supabase } from '${supabaseImportPath}';
 
+/**
+ * Type for join selections that can include nested relations
+ * Examples: 
+ * - '*' (all fields)
+ * - 'id, name, created_at' (specific fields)
+ * - 'id, name, posts(id, title)' (with basic relation)
+ * - 'id, name, posts(id, title, comments(*))' (with nested relations)
+ */
+export type SelectOption = string;
+
+/**
+ * Generic type to represent the return type with potential joins
+ * T is the base table type, JoinedData is for joined relations
+ */
+export type WithJoins<T, JoinedData = any> = T & JoinedData;
+
 // Query keys
 const ${camelTableName}Keys = {
   all: ['${tableName}'] as const,
   lists: () => [...${camelTableName}Keys.all, 'list'] as const,
-  list: (filters: ${pascalTableName}FilterParams) => [...${camelTableName}Keys.lists(), filters] as const,
+  list: (filters: ${pascalTableName}FilterParams, select?: SelectOption) => 
+    [...${camelTableName}Keys.lists(), filters, select] as const,
   details: () => [...${camelTableName}Keys.all, 'detail'] as const,
-  detail: (id: string) => [...${camelTableName}Keys.details(), id] as const,
-  primaryKey: (primaryKeyColumn: string, value: string | number) => [...${camelTableName}Keys.details(), primaryKeyColumn, value] as const,
+  detail: (id: string, select?: SelectOption) => 
+    [...${camelTableName}Keys.details(), id, select] as const,
+  primaryKey: (primaryKeyColumn: string, value: string | number, select?: SelectOption) => 
+    [...${camelTableName}Keys.details(), primaryKeyColumn, value, select] as const,
 };
 
 // Get all ${tableName}
-export function useGet${pascalTableName}(
+export function useGet${pascalTableName}<JoinedData = {}>(
   filters: ${pascalTableName}FilterParams = {}, 
-  options?: Omit<QueryOptions<${pascalTableName}Row[], Error>, 'queryKey' | 'queryFn'>
+  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>[], Error>, 'queryKey' | 'queryFn'> & {
+    /**
+     * Specify what columns to return and any relationships to join 
+     * Examples:
+     * - '*' (all fields, default)
+     * - 'id, name, created_at' (only specific fields)
+     * - 'id, name, posts(id, title)' (join posts relation)
+     * - 'id, name, posts(id, title, comments(*))' (join posts with nested comments)
+     */
+    select?: SelectOption;
+  }
 ) {
+  const select = options?.select || '*';
+  
   return useQuery({
-    queryKey: ${camelTableName}Keys.list(filters),
+    queryKey: ${camelTableName}Keys.list(filters, select),
     queryFn: async () => {
-      let query = supabase.from('${tableName}').select('*');
+      let query = supabase.from('${tableName}').select(select);
       
       // Apply filters
       if (filters) {
@@ -101,18 +132,21 @@ export function useGet${pascalTableName}(
         throw new Error(error.message);
       }
       
-      return data as ${pascalTableName}Row[];
+      return data as WithJoins<${pascalTableName}Row, JoinedData>[];
     },
     ...options
   });
 }
 
 // Lazy version - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}() {
+export function useLazyGet${pascalTableName}<JoinedData = {}>() {
   const queryClient = useQueryClient();
   
-  const fetchData = async (filters: ${pascalTableName}FilterParams = {}) => {
-    let query = supabase.from('${tableName}').select('*');
+  const fetchData = async (
+    filters: ${pascalTableName}FilterParams = {}, 
+    select: SelectOption = '*'
+  ) => {
+    let query = supabase.from('${tableName}').select(select);
     
     // Apply filters
     if (filters) {
@@ -177,10 +211,10 @@ export function useLazyGet${pascalTableName}() {
       throw new Error(error.message);
     }
     
-    const result = data as ${pascalTableName}Row[];
+    const result = data as WithJoins<${pascalTableName}Row, JoinedData>[];
     
     // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.list(filters), result);
+    queryClient.setQueryData(${camelTableName}Keys.list(filters, select), result);
     
     return result;
   };
@@ -189,17 +223,28 @@ export function useLazyGet${pascalTableName}() {
 }
 
 // Get a single ${tableName} by ID (assumes primary key is 'id')
-export function useGet${pascalTableName}ById(
+export function useGet${pascalTableName}ById<JoinedData = {}>(
   id: string | undefined,
-  options?: Omit<QueryOptions<${pascalTableName}Row, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>, Error>, 'queryKey' | 'queryFn' | 'enabled'> & {
+    /**
+     * Specify what columns to return and any relationships to join 
+     * Examples:
+     * - '*' (all fields, default)
+     * - 'id, name, created_at' (only specific fields)
+     * - 'id, name, posts(id, title)' (join posts relation)
+     */
+    select?: SelectOption;
+  }
 ) {
+  const select = options?.select || '*';
+  
   return useQuery({
-    queryKey: ${camelTableName}Keys.detail(id || ''),
+    queryKey: ${camelTableName}Keys.detail(id || '', select),
     enabled: !!id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('${tableName}')
-        .select('*')
+        .select(select)
         .eq('id', id)
         .single();
       
@@ -207,25 +252,36 @@ export function useGet${pascalTableName}ById(
         throw new Error(error.message);
       }
       
-      return data as ${pascalTableName}Row;
+      return data as WithJoins<${pascalTableName}Row, JoinedData>;
     },
     ...options
   });
 }
 
 // Get a single ${tableName} by any primary key
-export function useGet${pascalTableName}ByPrimaryKey<T extends string | number>(
+export function useGet${pascalTableName}ByPrimaryKey<T extends string | number, JoinedData = {}>(
   primaryKeyColumn: string,
   value: T | undefined,
-  options?: Omit<QueryOptions<${pascalTableName}Row, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>, Error>, 'queryKey' | 'queryFn' | 'enabled'> & {
+    /**
+     * Specify what columns to return and any relationships to join 
+     * Examples:
+     * - '*' (all fields, default)
+     * - 'id, name, created_at' (only specific fields)
+     * - 'id, name, posts(id, title)' (join posts relation)
+     */
+    select?: SelectOption;
+  }
 ) {
+  const select = options?.select || '*';
+  
   return useQuery({
-    queryKey: ${camelTableName}Keys.primaryKey(primaryKeyColumn, value?.toString() || ''),
+    queryKey: ${camelTableName}Keys.primaryKey(primaryKeyColumn, value?.toString() || '', select),
     enabled: !!value,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('${tableName}')
-        .select('*')
+        .select(select)
         .eq(primaryKeyColumn, value)
         .single();
       
@@ -233,20 +289,23 @@ export function useGet${pascalTableName}ByPrimaryKey<T extends string | number>(
         throw new Error(error.message);
       }
       
-      return data as ${pascalTableName}Row;
+      return data as WithJoins<${pascalTableName}Row, JoinedData>;
     },
     ...options
   });
 }
 
 // Lazy version - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}ById() {
+export function useLazyGet${pascalTableName}ById<JoinedData = {}>() {
   const queryClient = useQueryClient();
   
-  const fetchData = async (id: string) => {
+  const fetchData = async (
+    id: string, 
+    select: SelectOption = '*'
+  ) => {
     const { data, error } = await supabase
       .from('${tableName}')
-      .select('*')
+      .select(select)
       .eq('id', id)
       .single();
     
@@ -254,10 +313,10 @@ export function useLazyGet${pascalTableName}ById() {
       throw new Error(error.message);
     }
     
-    const result = data as ${pascalTableName}Row;
+    const result = data as WithJoins<${pascalTableName}Row, JoinedData>;
     
     // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.detail(id), result);
+    queryClient.setQueryData(${camelTableName}Keys.detail(id, select), result);
     
     return result;
   };
@@ -266,13 +325,17 @@ export function useLazyGet${pascalTableName}ById() {
 }
 
 // Lazy version for fetching by primary key - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}ByPrimaryKey() {
+export function useLazyGet${pascalTableName}ByPrimaryKey<JoinedData = {}>() {
   const queryClient = useQueryClient();
   
-  const fetchData = async <T extends string | number>(primaryKeyColumn: string, value: T) => {
+  const fetchData = async <T extends string | number>(
+    primaryKeyColumn: string, 
+    value: T, 
+    select: SelectOption = '*'
+  ) => {
     const { data, error } = await supabase
       .from('${tableName}')
-      .select('*')
+      .select(select)
       .eq(primaryKeyColumn, value)
       .single();
     
@@ -280,10 +343,10 @@ export function useLazyGet${pascalTableName}ByPrimaryKey() {
       throw new Error(error.message);
     }
     
-    const result = data as ${pascalTableName}Row;
+    const result = data as WithJoins<${pascalTableName}Row, JoinedData>;
     
     // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.primaryKey(primaryKeyColumn, value.toString()), result);
+    queryClient.setQueryData(${camelTableName}Keys.primaryKey(primaryKeyColumn, value.toString(), select), result);
     
     return result;
   };
