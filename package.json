@@ -63,10 +63,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/samishukri/supabase-to-hooks.git"
+    "url": "git+https://github.com/AudioGenius-ai/supabase-to-hooks.git"
   },
   "bugs": {
-    "url": "https://github.com/samishukri/supabase-to-hooks/issues"
+    "url": "https://github.com/AudioGenius-ai/supabase-to-hooks/issues"
   },
-  "homepage": "https://github.com/samishukri/supabase-to-hooks#readme"
+  "homepage": "https://github.com/AudioGenius-ai/supabase-to-hooks#readme"
 }
