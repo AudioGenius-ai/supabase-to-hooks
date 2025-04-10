@@ -1,13 +1,16 @@
 import { Project } from 'ts-morph';
-import * as fs from 'fs';
-import * as path from 'path';
-import { ExtractorOptions } from './extractors/types';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { ExtractorOptions } from './extractors/types';
 import { getTypeProperty } from './utils/helpers';
 import { extractAllBaseTypes, createBaseTypesFile } from './extractors/baseTypes';
 import { extractTablesByModule, createMainIndexFile } from './extractors/tables';
 import { extractEnums } from './extractors/enums';
+import { extractFunctions } from './extractors/functions';
+import { extractTableRelationships, saveTableRelationships, generateRelationshipTypes } from './extractors/relationships';
 import { generateTableHooks } from './generators/tableHooks';
 import { generateStorageModule } from './generators/storageHooks';
+import { generateAllFunctionHooks } from './generators/functionHooks';
 
 /**
  * Main function to run the extraction process
@@ -42,8 +45,9 @@ export async function run(options: ExtractorOptions): Promise<void> {
   }
 
   // Inside "public", we have "Tables", "Views", "Functions", "Enums"...
-  // Let's grab "Tables" and "Enums" for demonstration:
+  // Let's grab "Tables", "Functions", and "Enums":
   const publicTablesProp = getTypeProperty(publicProp, 'Tables');
+  const publicFunctionsProp = getTypeProperty(publicProp, 'Functions');
   const publicEnumsProp = getTypeProperty(publicProp, 'Enums');
 
   // Create the output directory if not exists
@@ -71,6 +75,17 @@ export async function run(options: ExtractorOptions): Promise<void> {
     for (const tableSymbol of tableSymbols) {
       const tableName = tableSymbol.getName();
       const moduleDir = path.join(outputDir, tableName);
+      
+      // Extract and save relationships for this table
+      const tableType = tableSymbol.getTypeAtLocation(
+        tableSymbol.getValueDeclarationOrThrow(),
+      );
+      
+      const relationships = extractTableRelationships(tableName, tableType);
+      saveTableRelationships(relationships, moduleDir);
+      generateRelationshipTypes(tableName, relationships, moduleDir);
+      
+      // Generate table hooks
       generateTableHooks(tableName, moduleDir, supabaseImportPath);
     }
   }
@@ -79,12 +94,24 @@ export async function run(options: ExtractorOptions): Promise<void> {
   if (publicEnumsProp) {
     extractEnums(publicEnumsProp, path.join(outputDir, 'enums.ts'));
   }
+  
+  // Extract Functions and generate hooks (if available)
+  if (publicFunctionsProp) {
+    console.log('Extracting RPC functions...');
+    extractFunctions(publicFunctionsProp, outputDir);
+    
+    // Generate hooks for RPC functions
+    const functionsDir = path.join(outputDir, 'functions');
+    if (fs.existsSync(functionsDir)) {
+      generateAllFunctionHooks(functionsDir, supabaseImportPath);
+    }
+  }
 
   // Generate storage-related hooks
   generateStorageModule(outputDir, supabaseImportPath);
 
   // Create the main index file
   if (publicTablesProp) {
-    createMainIndexFile(publicTablesProp, outputDir);
+    createMainIndexFile(publicTablesProp, outputDir, !!publicFunctionsProp);
   }
 } 

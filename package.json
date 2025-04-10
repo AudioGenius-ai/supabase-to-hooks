@@ -13,14 +13,15 @@
     "README.md",
     "LICENSE"
   ],
+  "packageManager": "pnpm@10.8.0",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rimraf dist",
     "lint": "eslint ./src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepare": "npm run clean && npm run build",
-    "prepublishOnly": "npm run lint",
+    "prepare": "pnpm run clean && pnpm run build",
+    "prepublishOnly": "pnpm run lint",
     "test": "jest",
     "test:basic": "jest tests/basic.test.ts tests/extractor.basic.test.ts",
     "test:watch": "jest --watch",

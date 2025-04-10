@@ -1,129 +1,129 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { camelCase, pascalCase } from '../utils/helpers';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { pascalCase } from '../utils/helpers';
 
 /**
  * Generate React Query hooks for a specific table
  */
 export function generateTableHooks(
-  tableName: string, 
-  moduleDir: string, 
-  supabaseImportPath: string = '@/lib/supabase'
+  tableName: string,
+  moduleDir: string,
+  supabaseImportPath: string,
 ) {
-  const camelTableName = camelCase(tableName);
   const pascalTableName = pascalCase(tableName);
   
-  const hooksContent = `
-import { useQuery, useMutation, useQueryClient, QueryOptions, MutationOptions } from '@tanstack/react-query';
+  const relationsPath = path.join(moduleDir, 'relations.ts');
+  const hasRelations = fs.existsSync(relationsPath);
+  
+  const hooksFilePath = path.join(moduleDir, 'hooks.ts');
+  
+  // --- Prepare conditional parts --- 
+  let relationsImport = '';
+  let relationsOptionDoc = '';
+  let relationsQueryKeyPart = '';
+  let relationsSelectLogicBlock = '';
+  const defaultSelectLogic = '      query = query.select(options?.select ? options.select.join(\',\') : \'*\');'; // Use backticks for consistency
+
+  if (hasRelations) {
+    relationsImport = 'import { Relationships } from \'./relations\';\n'; // Use backticks
+    relationsOptionDoc = '    /**\n     * Specify what relationships to join\n     * @example { profile: true, comments: true }\n     */\n    with?: Partial<Record<keyof Relationships, boolean>>;\n';
+    relationsQueryKeyPart = ', options?.with';
+    relationsSelectLogicBlock = `
+      // Determine the final select string including relations
+      let finalSelect = options?.select ? options.select.join(',') : '*';
+      if (options?.with) {
+        const withRelations = Object.entries(options.with)
+          .filter(([_, include]) => include)
+          .map(([relation]) => relation);
+          
+        if (withRelations.length > 0) {
+          finalSelect += ',' + withRelations.join(',');
+        }
+      }
+      query = query.select(finalSelect);
+    `;
+  }
+
+  const finalSelectLogic = relationsSelectLogicBlock || defaultSelectLogic; // No extra indentation needed here
+
+  // --- Generate Hook Content ---  
+  const content = `import { useQuery, useMutation, UseQueryOptions, UseMutationOptions } from '@tanstack/react-query';
 import { ${pascalTableName}Row, ${pascalTableName}Insert, ${pascalTableName}Update, ${pascalTableName}FilterParams } from './types';
 import { supabase } from '${supabaseImportPath}';
-
+${relationsImport}
 /**
- * Type for join selections that can include nested relations
- * Examples: 
- * - '*' (all fields)
- * - 'id, name, created_at' (specific fields)
- * - 'id, name, posts(id, title)' (with basic relation)
- * - 'id, name, posts(id, title, comments(*))' (with nested relations)
+ * React Query hook for fetching a single ${tableName} record by ID
  */
-export type SelectOption = string;
-
-/**
- * Generic type to represent the return type with potential joins
- * T is the base table type, JoinedData is for joined relations
- */
-export type WithJoins<T, JoinedData = any> = T & JoinedData;
-
-// Query keys
-const ${camelTableName}Keys = {
-  all: ['${tableName}'] as const,
-  lists: () => [...${camelTableName}Keys.all, 'list'] as const,
-  list: (filters: ${pascalTableName}FilterParams, select?: SelectOption) => 
-    [...${camelTableName}Keys.lists(), filters, select] as const,
-  details: () => [...${camelTableName}Keys.all, 'detail'] as const,
-  detail: (id: string, select?: SelectOption) => 
-    [...${camelTableName}Keys.details(), id, select] as const,
-  primaryKey: (primaryKeyColumn: string, value: string | number, select?: SelectOption) => 
-    [...${camelTableName}Keys.details(), primaryKeyColumn, value, select] as const,
+export const use${pascalTableName} = (
+  id: string,
+  options?: Omit<UseQueryOptions<${pascalTableName}Row, Error>, 'queryKey' | 'queryFn'> & {
+    /**
+     * Specify what columns to return
+     * @example ['id', 'name', 'email']
+     */
+    select?: string[];
+${relationsOptionDoc}  }
+) => {
+  return useQuery<${pascalTableName}Row, Error>({
+    queryKey: ['${tableName}', id${relationsQueryKeyPart}],
+    queryFn: async () => {
+      let query = supabase
+        .from('${tableName}')
+        .eq('id', id)
+        .limit(1);
+        
+${finalSelectLogic}
+      
+      const { data, error } = await query.single(); 
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return data as ${pascalTableName}Row;
+    },
+    ...options
+  });
 };
 
-// Get all ${tableName}
-export function useGet${pascalTableName}<JoinedData = {}>(
-  filters: ${pascalTableName}FilterParams = {}, 
-  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>[], Error>, 'queryKey' | 'queryFn'> & {
+/**
+ * React Query hook for fetching multiple ${tableName} records with filtering
+ */
+export const use${pascalTableName}List = (
+  params?: ${pascalTableName}FilterParams,
+  options?: Omit<UseQueryOptions<${pascalTableName}Row[], Error>, 'queryKey' | 'queryFn'> & {
     /**
-     * Specify what columns to return and any relationships to join 
-     * Examples:
-     * - '*' (all fields, default)
-     * - 'id, name, created_at' (only specific fields)
-     * - 'id, name, posts(id, title)' (join posts relation)
-     * - 'id, name, posts(id, title, comments(*))' (join posts with nested comments)
+     * Specify what columns to return
+     * @example ['id', 'name', 'email']
      */
-    select?: SelectOption;
-  }
-) {
-  const select = options?.select || '*';
-  
-  return useQuery({
-    queryKey: ${camelTableName}Keys.list(filters, select),
+    select?: string[];
+${relationsOptionDoc}  }
+) => {
+  return useQuery<${pascalTableName}Row[], Error>({
+    queryKey: ['${tableName}', 'list', params${relationsQueryKeyPart}],
     queryFn: async () => {
-      let query = supabase.from('${tableName}').select(select);
+      let query = supabase.from('${tableName}');
       
+${finalSelectLogic}
+
       // Apply filters
-      if (filters) {
-        // Define special parameters that shouldn't be used as column filters
-        const specialParams = ['limit', 'offset', 'order'];
-        
-        // Process filters with type safety
-        Object.keys(filters).forEach((key) => {
-          // Skip special parameters that aren't actual columns
-          if (specialParams.includes(key)) {
-            return;
-          }
-          
-          const value = filters[key as keyof typeof filters];
-          
-          if (value === undefined) {
-            return;
-          }
-          
-          if (value === null) {
-            query = query.is(key, null);
-            return;
-          }
-          
-          // Handle array values for 'in' filters
-          if (Array.isArray(value)) {
-            if (value.length > 0) {
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (key === 'limit' && typeof value === 'number') {
+            query = query.limit(value);
+          } else if (key === 'offset' && typeof value === 'number') {
+            query = query.range(value, value + (params.limit || 10) - 1);
+          } else if (key === 'order' && value && typeof value === 'object') {
+            const { column, direction = 'asc' } = value;
+            query = query.order(column as any, { ascending: direction === 'asc' });
+          } else if (value !== undefined && value !== null && key !== 'limit' && key !== 'offset' && key !== 'order') {
+            if (Array.isArray(value)) {
               query = query.in(key, value);
+            } else {
+              query = query.eq(key, value);
             }
-            return;
           }
-          
-          // Handle regular equality filters
-          query = query.eq(key, value);
         });
-        
-        // Apply limit if specified
-        if (filters.limit !== undefined) {
-          query = query.limit(filters.limit);
-        }
-        
-        // Apply offset if specified  
-        if (filters.offset !== undefined) {
-          query = query.range(
-            filters.offset, 
-            filters.limit !== undefined ? filters.offset + filters.limit - 1 : filters.offset + 9
-          );
-        }
-        
-        // Apply ordering if specified
-        if (filters.order && filters.order.column) {
-          query = query.order(
-            filters.order.column as string,
-            { ascending: filters.order.direction !== 'desc' }
-          );
-        }
       }
       
       const { data, error } = await query;
@@ -132,236 +132,23 @@ export function useGet${pascalTableName}<JoinedData = {}>(
         throw new Error(error.message);
       }
       
-      return data as WithJoins<${pascalTableName}Row, JoinedData>[];
+      return data as ${pascalTableName}Row[];
     },
     ...options
   });
-}
+};
 
-// Lazy version - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}<JoinedData = {}>() {
-  const queryClient = useQueryClient();
-  
-  const fetchData = async (
-    filters: ${pascalTableName}FilterParams = {}, 
-    select: SelectOption = '*'
-  ) => {
-    let query = supabase.from('${tableName}').select(select);
-    
-    // Apply filters
-    if (filters) {
-      // Define special parameters that shouldn't be used as column filters
-      const specialParams = ['limit', 'offset', 'order'];
-      
-      // Process filters with type safety
-      Object.keys(filters).forEach((key) => {
-        // Skip special parameters that aren't actual columns
-        if (specialParams.includes(key)) {
-          return;
-        }
-        
-        const value = filters[key as keyof typeof filters];
-        
-        if (value === undefined) {
-          return;
-        }
-        
-        if (value === null) {
-          query = query.is(key, null);
-          return;
-        }
-        
-        // Handle array values for 'in' filters
-        if (Array.isArray(value)) {
-          if (value.length > 0) {
-            query = query.in(key, value);
-          }
-          return;
-        }
-        
-        // Handle regular equality filters
-        query = query.eq(key, value);
-      });
-      
-      // Apply limit if specified
-      if (filters.limit !== undefined) {
-        query = query.limit(filters.limit);
-      }
-      
-      // Apply offset if specified  
-      if (filters.offset !== undefined) {
-        query = query.range(
-          filters.offset, 
-          filters.limit !== undefined ? filters.offset + filters.limit - 1 : filters.offset + 9
-        );
-      }
-      
-      // Apply ordering if specified
-      if (filters.order && filters.order.column) {
-        query = query.order(
-          filters.order.column as string,
-          { ascending: filters.order.direction !== 'desc' }
-        );
-      }
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      throw new Error(error.message);
-    }
-    
-    const result = data as WithJoins<${pascalTableName}Row, JoinedData>[];
-    
-    // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.list(filters, select), result);
-    
-    return result;
-  };
-  
-  return { fetch: fetchData };
-}
-
-// Get a single ${tableName} by ID (assumes primary key is 'id')
-export function useGet${pascalTableName}ById<JoinedData = {}>(
-  id: string | undefined,
-  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>, Error>, 'queryKey' | 'queryFn' | 'enabled'> & {
-    /**
-     * Specify what columns to return and any relationships to join 
-     * Examples:
-     * - '*' (all fields, default)
-     * - 'id, name, created_at' (only specific fields)
-     * - 'id, name, posts(id, title)' (join posts relation)
-     */
-    select?: SelectOption;
-  }
-) {
-  const select = options?.select || '*';
-  
-  return useQuery({
-    queryKey: ${camelTableName}Keys.detail(id || '', select),
-    enabled: !!id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('${tableName}')
-        .select(select)
-        .eq('id', id)
-        .single();
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      return data as WithJoins<${pascalTableName}Row, JoinedData>;
-    },
-    ...options
-  });
-}
-
-// Get a single ${tableName} by any primary key
-export function useGet${pascalTableName}ByPrimaryKey<T extends string | number, JoinedData = {}>(
-  primaryKeyColumn: string,
-  value: T | undefined,
-  options?: Omit<QueryOptions<WithJoins<${pascalTableName}Row, JoinedData>, Error>, 'queryKey' | 'queryFn' | 'enabled'> & {
-    /**
-     * Specify what columns to return and any relationships to join 
-     * Examples:
-     * - '*' (all fields, default)
-     * - 'id, name, created_at' (only specific fields)
-     * - 'id, name, posts(id, title)' (join posts relation)
-     */
-    select?: SelectOption;
-  }
-) {
-  const select = options?.select || '*';
-  
-  return useQuery({
-    queryKey: ${camelTableName}Keys.primaryKey(primaryKeyColumn, value?.toString() || '', select),
-    enabled: !!value,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('${tableName}')
-        .select(select)
-        .eq(primaryKeyColumn, value)
-        .single();
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      return data as WithJoins<${pascalTableName}Row, JoinedData>;
-    },
-    ...options
-  });
-}
-
-// Lazy version - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}ById<JoinedData = {}>() {
-  const queryClient = useQueryClient();
-  
-  const fetchData = async (
-    id: string, 
-    select: SelectOption = '*'
-  ) => {
-    const { data, error } = await supabase
-      .from('${tableName}')
-      .select(select)
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      throw new Error(error.message);
-    }
-    
-    const result = data as WithJoins<${pascalTableName}Row, JoinedData>;
-    
-    // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.detail(id, select), result);
-    
-    return result;
-  };
-  
-  return { fetch: fetchData };
-}
-
-// Lazy version for fetching by primary key - only fetches when the fetch function is called
-export function useLazyGet${pascalTableName}ByPrimaryKey<JoinedData = {}>() {
-  const queryClient = useQueryClient();
-  
-  const fetchData = async <T extends string | number>(
-    primaryKeyColumn: string, 
-    value: T, 
-    select: SelectOption = '*'
-  ) => {
-    const { data, error } = await supabase
-      .from('${tableName}')
-      .select(select)
-      .eq(primaryKeyColumn, value)
-      .single();
-    
-    if (error) {
-      throw new Error(error.message);
-    }
-    
-    const result = data as WithJoins<${pascalTableName}Row, JoinedData>;
-    
-    // Update the cache with the fetched data
-    queryClient.setQueryData(${camelTableName}Keys.primaryKey(primaryKeyColumn, value.toString(), select), result);
-    
-    return result;
-  };
-  
-  return { fetch: fetchData };
-}
-
-// Create a new ${tableName}
-export function useCreate${pascalTableName}(
-  options?: Omit<MutationOptions<${pascalTableName}Row, Error, ${pascalTableName}Insert, unknown>, 'mutationFn'>
-) {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (newItem: ${pascalTableName}Insert) => {
+/**
+ * React Query mutation hook for creating a new ${tableName} record
+ */
+export const use${pascalTableName}Create = (
+  options?: Omit<
+    UseMutationOptions<${pascalTableName}Row, Error, ${pascalTableName}Insert>,
+    'mutationFn'
+  >
+) => {
+  return useMutation<${pascalTableName}Row, Error, ${pascalTableName}Insert>({
+    mutationFn: async (newItem) => {
       const { data, error } = await supabase
         .from('${tableName}')
         .insert(newItem)
@@ -374,22 +161,29 @@ export function useCreate${pascalTableName}(
       
       return data as ${pascalTableName}Row;
     },
-    onSuccess: () => {
-      // Invalidate all queries for this table
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.all });
-    },
     ...options
   });
-}
+};
 
-// Update an existing ${tableName} by ID
-export function useUpdate${pascalTableName}(
-  options?: Omit<MutationOptions<${pascalTableName}Row, Error, { id: string; data: ${pascalTableName}Update }, unknown>, 'mutationFn'>
-) {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: ${pascalTableName}Update }) => {
+/**
+ * React Query mutation hook for updating an existing ${tableName} record
+ */
+export const use${pascalTableName}Update = (
+  options?: Omit<
+    UseMutationOptions<
+      ${pascalTableName}Row,
+      Error,
+      { id: string; data: ${pascalTableName}Update }
+    >,
+    'mutationFn'
+  >
+) => {
+  return useMutation<
+    ${pascalTableName}Row,
+    Error,
+    { id: string; data: ${pascalTableName}Update }
+  >({
+    mutationFn: async ({ id, data }) => {
       const { data: updatedData, error } = await supabase
         .from('${tableName}')
         .update(data)
@@ -403,55 +197,21 @@ export function useUpdate${pascalTableName}(
       
       return updatedData as ${pascalTableName}Row;
     },
-    onSuccess: (data) => {
-      // Invalidate specific queries
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
-    },
     ...options
   });
-}
+};
 
-// Update ${tableName} by any primary key
-export function useUpdate${pascalTableName}ByPrimaryKey<T extends string | number>(
-  options?: Omit<MutationOptions<${pascalTableName}Row, Error, { primaryKeyColumn: string; value: T; data: ${pascalTableName}Update }, unknown>, 'mutationFn'>
-) {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ primaryKeyColumn, value, data }: { primaryKeyColumn: string; value: T; data: ${pascalTableName}Update }) => {
-      const { data: updatedData, error } = await supabase
-        .from('${tableName}')
-        .update(data)
-        .eq(primaryKeyColumn, value)
-        .select()
-        .single();
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      return updatedData as ${pascalTableName}Row;
-    },
-    onSuccess: (_, variables) => {
-      // Invalidate specific queries
-      queryClient.invalidateQueries({ 
-        queryKey: ${camelTableName}Keys.primaryKey(variables.primaryKeyColumn, variables.value.toString())
-      });
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
-    },
-    ...options
-  });
-}
-
-// Delete a ${tableName} by ID
-export function useDelete${pascalTableName}(
-  options?: Omit<MutationOptions<string, Error, string, unknown>, 'mutationFn'>
-) {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (id: string) => {
+/**
+ * React Query mutation hook for deleting a ${tableName} record
+ */
+export const use${pascalTableName}Delete = (
+  options?: Omit<
+    UseMutationOptions<void, Error, string>,
+    'mutationFn'
+  >
+) => {
+  return useMutation<void, Error, string>({
+    mutationFn: async (id) => {
       const { error } = await supabase
         .from('${tableName}')
         .delete()
@@ -460,51 +220,151 @@ export function useDelete${pascalTableName}(
       if (error) {
         throw new Error(error.message);
       }
-      
-      return id;
-    },
-    onSuccess: (id) => {
-      // Invalidate specific queries
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.detail(id) });
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
     },
     ...options
   });
-}
+};
 
-// Delete ${tableName} by any primary key
-export function useDelete${pascalTableName}ByPrimaryKey<T extends string | number>(
-  options?: Omit<MutationOptions<{ primaryKeyColumn: string; value: T }, Error, { primaryKeyColumn: string; value: T }, unknown>, 'mutationFn'>
-) {
-  const queryClient = useQueryClient();
+/**
+ * Direct function to fetch a single ${tableName} by ID (no React Query)
+ */
+export const get${pascalTableName} = async (
+  id: string,
+  options?: {
+    select?: string[];
+${relationsOptionDoc}  }
+): Promise<${pascalTableName}Row> => {
+  let query = supabase
+    .from('${tableName}')
+    .eq('id', id)
+    .limit(1);
+    
+${finalSelectLogic}
   
-  return useMutation({
-    mutationFn: async ({ primaryKeyColumn, value }: { primaryKeyColumn: string; value: T }) => {
-      const { error } = await supabase
-        .from('${tableName}')
-        .delete()
-        .eq(primaryKeyColumn, value);
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      return { primaryKeyColumn, value };
-    },
-    onSuccess: (result) => {
-      // Invalidate specific queries
-      queryClient.invalidateQueries({ 
-        queryKey: ${camelTableName}Keys.primaryKey(result.primaryKeyColumn, result.value.toString())
-      });
-      queryClient.invalidateQueries({ queryKey: ${camelTableName}Keys.lists() });
-    },
-    ...options
-  });
-}
-`.trim();
+  const { data, error } = await query.single(); 
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data as ${pascalTableName}Row;
+};
 
-  // Write the hooks file
-  const hooksFilePath = path.join(moduleDir, 'hooks.ts');
-  fs.writeFileSync(hooksFilePath, hooksContent, 'utf-8');
+/**
+ * Direct function to fetch multiple ${tableName} records with filtering (no React Query)
+ */
+export const get${pascalTableName}List = async (
+  params?: ${pascalTableName}FilterParams,
+  options?: {
+    select?: string[];
+${relationsOptionDoc}  }
+): Promise<${pascalTableName}Row[]> => {
+  let query = supabase.from('${tableName}');
+  
+${finalSelectLogic}
+
+  // Apply filters (same as use${pascalTableName}List)
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (key === 'limit' && typeof value === 'number') {
+        query = query.limit(value);
+      } else if (key === 'offset' && typeof value === 'number') {
+        query = query.range(value, value + (params.limit || 10) - 1);
+      } else if (key === 'order' && value && typeof value === 'object') {
+        const { column, direction = 'asc' } = value;
+        query = query.order(column as any, { ascending: direction === 'asc' });
+      } else if (value !== undefined && value !== null && key !== 'limit' && key !== 'offset' && key !== 'order') {
+        if (Array.isArray(value)) {
+          query = query.in(key, value);
+        } else {
+          query = query.eq(key, value);
+        }
+      }
+    });
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data as ${pascalTableName}Row[];
+};
+
+/**
+ * Direct function to create a new ${tableName} (no React Query)
+ */
+export const create${pascalTableName} = async (
+  newItem: ${pascalTableName}Insert
+): Promise<${pascalTableName}Row> => {
+  const { data, error } = await supabase
+    .from('${tableName}')
+    .insert(newItem)
+    .select() // Create always selects *
+    .single();
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data as ${pascalTableName}Row;
+};
+
+/**
+ * Direct function to update an existing ${tableName} (no React Query)
+ */
+export const update${pascalTableName} = async (
+  id: string,
+  updateData: ${pascalTableName}Update
+): Promise<${pascalTableName}Row> => {
+  const { data, error } = await supabase
+    .from('${tableName}')
+    .update(updateData)
+    .eq('id', id)
+    .select() // Update always selects *
+    .single();
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data as ${pascalTableName}Row;
+};
+
+/**
+ * Direct function to delete a ${tableName} (no React Query)
+ */
+export const delete${pascalTableName} = async (id: string): Promise<void> => {
+  const { error } = await supabase
+    .from('${tableName}')
+    .delete()
+    .eq('id', id);
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+};
+`;
+
+  fs.writeFileSync(hooksFilePath, content, 'utf-8');
   console.log(`Wrote hooks file: ${hooksFilePath}`);
+  
+  // Create index file
+  const indexFilePath = path.join(moduleDir, 'index.ts');
+  
+  const exportsList = [
+    '// Auto-generated index file',
+    'export * from \'./types\';',
+    'export * from \'./hooks\';'
+  ];
+  
+  if (hasRelations) {
+    exportsList.push('export * from \'./relations\';');
+  }
+  
+  const indexContent = exportsList.join('\n');
+  
+  fs.writeFileSync(indexFilePath, indexContent, 'utf-8');
+  console.log(`Wrote index file: ${indexFilePath}`);
 } 

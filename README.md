@@ -6,13 +6,14 @@ A CLI tool that automatically generates React Query hooks from your Supabase dat
 
 - 🚀 Extracts types from your Supabase database.types.ts file
 - 🎣 Generates fully typed React Query hooks for each table
-- 🔄 Creates CRUD operations (Get, GetById, Create, Update, Delete)
+- 📞 Generates hooks for database RPC functions (excluding private `_` functions)
+- 🔄 Creates CRUD operations (Get, GetById, Create, Update, Delete) for tables
+- 🔗 Generates relationship types and enables joined queries based on foreign keys using a simple `with` option
 - 🗄️ Includes storage hooks for Supabase Storage
 - 📦 Clean module structure for better code organization
 - ⚡ Strongly typed with full TypeScript support
 - 🔑 Support for tables with custom primary key column names
 - ⚙️ Full access to React Query options for all hooks
-- 🔗 Dynamic table joins at runtime with proper TypeScript types
 
 ## Installation
 
@@ -98,58 +99,141 @@ output-directory/
   ├── index.ts           # Main re-export file
   ├── base-types.ts      # Common types across tables
   ├── enums.ts           # Generated enums
+  ├── functions/         # RPC function hooks and types
+  │   ├── index.ts       # Re-exports all function modules
+  │   └── [function_name]/ # For each public RPC function
+  │       ├── index.ts
+  │       ├── types.ts   # Function-specific Args and Returns types
+  │       └── hooks.ts   # Function-specific hooks (useQuery, useMutation, direct call)
   ├── storage/           # Storage-related hooks and types
   │   ├── index.ts
   │   ├── types.ts
   │   └── hooks.ts
   └── [table_name]/      # For each table in your database
       ├── index.ts
-      ├── types.ts       # Table-specific types
-      └── hooks.ts       # Table-specific hooks
+      ├── types.ts       # Table-specific types (Row, Insert, Update, FilterParams)
+      ├── hooks.ts       # Table-specific hooks (useQuery, useMutation, direct calls)
+      └── relations.ts   # Table-specific relationship types (if foreign keys exist)
 ```
 
 ## Example Usage in Your React Application
 
-```tsx
-import { useGetUsers, useCreateUser, useUpdateUser, useDeleteUser, useGetUserByPrimaryKey } from './lib/database/users';
+### Using Table Hooks
 
-function UsersList() {
-  // Get all users
-  const { data: users, isLoading } = useGetUsers();
+```tsx
+import {
+  useUsers, // Renamed from useGetUsers for consistency
+  useUsersList, // Renamed from useGetUsersList
+  useUser, // Renamed from useGetUserById
+  useUserCreate, // Renamed from useCreateUser
+  useUserUpdate, // Renamed from useUpdateUser
+  useUserDelete, // Renamed from useDeleteUser
+  // Direct functions (no React Query)
+  getUser, 
+  getUsersList, 
+  createUser, 
+  updateUser, 
+  deleteUser
+} from './lib/database/users';
+
+function UsersComponent() {
+  // Get a single user by ID (primary key assumed to be 'id')
+  const { data: user, isLoading: userLoading } = useUser('user-id-123');
   
-  // Get users with filters
-  const { data: activeUsers } = useGetUsers({ is_active: true });
+  // Get a list of users with filters
+  const { data: activeUsers, isLoading: listLoading } = useUsersList({ is_active: true });
   
-  // Get a specific user by ID (assuming 'id' is the primary key)
-  const { data: user } = useGetUserById('user-id-123');
+  // Create a user mutation
+  const createUserMutation = useUserCreate();
   
-  // Get a user by a custom primary key column
-  const { data: userByEmail } = useGetUserByPrimaryKey('email', 'user@example.com');
+  // Update a user mutation
+  const updateUserMutation = useUserUpdate();
   
-  // Create a user
-  const createUser = useCreateUser();
+  // Delete a user mutation
+  const deleteUserMutation = useUserDelete();
   
-  // Update a user
-  const updateUser = useUpdateUser();
-  
-  // Delete a user
-  const deleteUser = useDeleteUser();
-  
-  const handleCreateUser = () => {
-    createUser.mutate({ name: 'John Doe', email: 'john@example.com' });
+  const handleCreate = () => {
+    createUserMutation.mutate(
+      { name: 'John Doe', email: 'john@example.com' },
+      { onSuccess: (newUser) => console.log('Created:', newUser) }
+    );
+  };
+
+  const handleUpdate = (userId: string) => {
+    updateUserMutation.mutate(
+      { id: userId, data: { name: 'John Doe Updated' } },
+      { onSuccess: (updatedUser) => console.log('Updated:', updatedUser) }
+    );
+  };
+
+  const handleDelete = (userId: string) => {
+    deleteUserMutation.mutate(userId, {
+      onSuccess: () => console.log('Deleted user:', userId),
+    });
   };
   
+  // Example using direct functions (outside React components or for specific needs)
+  async function fetchAdminUserDirectly(adminId: string) {
+    try {
+      const admin = await getUser(adminId);
+      console.log('Admin fetched directly:', admin);
+    } catch (error) {
+      console.error('Direct fetch failed:', error);
+    }
+  }
+
   // ... rest of your component
 }
 ```
 
+### Using RPC Function Hooks
+
+Assuming you have an RPC function named `get_user_profile`:
+
+```tsx
+import {
+  useGetUserProfile, // useQuery hook
+  useGetUserProfileMutation, // useMutation hook (if applicable, depends on function)
+  getUserProfile // Direct async function call
+} from './lib/database/functions/get_user_profile';
+
+function UserProfile({ userId }: { userId: string }) {
+  // Fetch user profile using the RPC query hook
+  const { data: profile, isLoading, error } = useGetUserProfile({ user_id_arg: userId });
+
+  if (isLoading) return <div>Loading profile...</div>;
+  if (error) return <div>Error loading profile: {error.message}</div>;
+
+  // Example using the direct function call
+  const refreshProfile = async () => {
+    try {
+      const latestProfile = await getUserProfile({ user_id_arg: userId });
+      console.log('Refreshed profile:', latestProfile);
+      // Manually update state or trigger refetch if needed
+    } catch (err) {
+      console.error('Failed to refresh profile:', err);
+    }
+  };
+
+  return (
+    <div>
+      <h2>{profile?.username}</h2>
+      <p>{profile?.bio}</p>
+      <button onClick={refreshProfile}>Refresh Profile</button>
+    </div>
+  );
+}
+```
+
+Note: The mutation hook (`useGetUserProfileMutation`) is generated for all functions but might be less common for functions intended only for data retrieval (`useQuery`).
+
 ### Passing React Query Options
 
-All generated hooks accept React Query options as their last parameter:
+All generated hooks accept standard React Query options as their last parameter:
 
 ```tsx
 // Query hooks with options
-const { data: users } = useGetUsers(
+const { data: users } = useUsersList(
   { is_active: true }, // Filters
   { 
     staleTime: 60000,  // 1 minute
@@ -159,96 +243,103 @@ const { data: users } = useGetUsers(
 );
 
 // Mutation hooks with options
-const updateUser = useUpdateUser({
+const updateUser = useUserUpdate({
   onSuccess: (data) => {
     console.log('User updated successfully', data);
-    showSuccessToast('User updated!');
+    // queryClient.invalidateQueries(...)
   },
   onError: (error) => {
     console.error('Failed to update user', error);
-    showErrorToast('Update failed');
   }
 });
 ```
+
+### Working with Relationships (Joins)
+
+If your tables have foreign key relationships defined in `database.types.ts`, the tool generates relationship types (`relations.ts`) and allows you to easily fetch related data using the `with` option in table query hooks (`useTable`, `useTableList`, `getTable`, `getTableList`).
+
+```tsx
+import { usePost, usePostsList } from './lib/database/posts';
+// Assuming posts table has relationships defined in relations.ts like:
+// export interface Relationships {
+//   author?: UserRow | null; // one-to-one or many-to-one
+//   comments?: CommentRow[]; // one-to-many
+// }
+
+function PostDetails({ postId }: { postId: string }) {
+  // Fetch a single post and include its author and comments
+  const { data: post, isLoading } = usePost(postId, {
+    select: ['id', 'title', 'content'], // Select specific fields from the post table
+    with: {
+      author: true, // Join the author relationship
+      comments: true // Join the comments relationship
+    }
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h1>{post?.title}</h1>
+      <p>By: {post?.author?.name || 'Unknown'}</p> {/* Access related author data */}
+      <p>{post?.content}</p>
+      <h3>Comments:</h3>
+      <ul>
+        {post?.comments?.map(comment => ( /* Access related comments data */
+          <li key={comment.id}>{comment.text}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PostsFeed() {
+  // Fetch multiple posts, including the author for each
+  const { data: posts, isLoading } = usePostsList(
+    { limit: 10, order: { column: 'created_at', direction: 'desc' } }, // Filters/params
+    {
+      select: ['id', 'title'], // Only get id and title from posts
+      with: { author: true } // Join author for each post
+    }
+  );
+
+  // ... render posts with author names ...
+}
+```
+
+The `with` option takes an object where keys correspond to the relationship names defined in the generated `relations.ts` file for that table. Set the value to `true` to include that relationship in the query. The underlying Supabase `select()` string is automatically constructed for you.
+
+TypeScript will correctly infer the types of the joined data based on the `relations.ts` definitions, providing full type safety when accessing related fields (e.g., `post.author.name`, `post.comments[0].text`).
 
 ### Working with Custom Primary Keys
 
-For tables that don't use 'id' as their primary key column, use the dedicated primary key hooks:
+For tables that don't use `id` as their primary key column, specialized hooks were previously generated. With the simplified hook structure, you use the standard hooks but filtering requires using the primary key column name explicitly in the filter object if fetching by that key.
 
 ```tsx
-// Get by primary key
-const { data: product } = useGetProductByPrimaryKey('product_code', 'PROD-123');
+// Assuming 'products' table uses 'product_code' as primary key
+import { useProduct, useProductList, useProductUpdate, useProductDelete } from './lib/database/products';
+
+// Fetch by primary key - use the list hook with a filter
+const { data: product } = useProductList({ product_code: 'PROD-123' }, { enabled: !!productCode });
+// Note: useProductList returns an array, you might need to get the first element.
+// Or, use the single hook IF your primary key column is named 'id'.
 
 // Update by primary key
-const updateProductByCode = useUpdateProductByPrimaryKey();
-updateProductByCode.mutate({
-  primaryKeyColumn: 'product_code',
-  value: 'PROD-123',
+const updateProductMutation = useProductUpdate();
+updateProductMutation.mutate({
+  id: 'PROD-123', // IMPORTANT: The ID here MUST match the value of the primary key column
   data: { name: 'Updated Product', price: 99.99 }
+  // Note: The mutation hook implicitly uses 'id' for the .eq() condition.
+  // If your primary key is NOT 'id', direct supabase calls or custom hooks might be needed for updates/deletes.
 });
 
 // Delete by primary key
-const deleteProductByCode = useDeleteProductByPrimaryKey();
-deleteProductByCode.mutate({
-  primaryKeyColumn: 'product_code',
-  value: 'PROD-123'
-});
+const deleteProductMutation = useProductDelete();
+deleteProductMutation.mutate('PROD-123'); // Assumes the value is the primary key
+// Similar caveat as update applies if the primary key column isn't 'id'.
 ```
 
-### Dynamic Table Joins
-
-You can specify table joins at runtime to fetch related data:
-
-```tsx
-// Type for the joined data (optional but provides better type safety)
-interface UserWithPosts {
-  posts: {
-    id: string;
-    title: string;
-    content: string;
-  }[];
-}
-
-// Get a user with their posts
-const { data: userWithPosts } = useGetUserById<UserWithPosts>(
-  'user-123',
-  {
-    // Select specific fields from the user table and join the posts relation
-    select: 'id, name, email, posts(id, title, content)'
-  }
-);
-
-// Now you can access the joined data with full type safety
-if (userWithPosts) {
-  console.log(userWithPosts.name); // User's name
-  console.log(userWithPosts.posts[0]?.title); // First post's title
-}
-
-// Get all users with their posts and comments (nested joins)
-const { data: usersWithPostsAndComments } = useGetUsers<{
-  posts: {
-    id: string;
-    title: string;
-    comments: {
-      id: string;
-      text: string;
-    }[];
-  }[];
-}>(
-  {}, // No filters
-  { 
-    select: 'id, name, email, posts(id, title, comments(id, text))'
-  }
-);
-```
-
-The `select` option supports the full Supabase syntax for joins:
-
-- `'*'` - Select all fields from the table
-- `'id, name, email'` - Select only specific fields
-- `'*, posts(*)'` - Select all fields and join the posts relation with all fields
-- `'id, name, posts(id, title)'` - Select specific fields and join with specific related fields
-- `'id, posts(id, title, comments(*))'` - Nested joins for related tables
+**Important:** The standard `useUpdate` and `useDelete` hooks generated currently assume the primary key column is named `id` for the `eq()` filter. If your primary key has a different name, you might need to use direct Supabase client calls (`supabase.from(...).update(...).eq('your_pk_column', value)`) or create custom hooks for update/delete operations until this tool explicitly supports custom PKs for mutations.
 
 ## Pre-requisites
 

@@ -2,8 +2,8 @@
 
 import { Command } from 'commander';
 import { run } from './extractor';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import chalk from 'chalk';
 
 const packageJson = JSON.parse(
@@ -30,7 +30,8 @@ program
         const configPath = path.resolve(process.cwd(), options.config);
         if (fs.existsSync(configPath)) {
           const configFile = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          options = { ...options, ...configFile };
+          const mergedOptions = { ...options, ...configFile };
+          Object.assign(options, configFile);
         } else {
           console.error(chalk.red(`❌ Config file not found: ${options.config}`));
           process.exit(1);
@@ -85,7 +86,10 @@ export * from './utils/helpers';
 export * from './extractors/baseTypes';
 export * from './extractors/tables';
 export * from './extractors/enums';
+export * from './extractors/functions';
+export * from './extractors/relationships';
 
 // Export generators
 export * from './generators/tableHooks';
-export * from './generators/storageHooks'; 
+export * from './generators/storageHooks';
+export * from './generators/functionHooks'; 

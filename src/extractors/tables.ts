@@ -1,6 +1,6 @@
-import { Type } from 'ts-morph';
-import * as fs from 'fs';
-import * as path from 'path';
+import type { Type } from 'ts-morph';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { 
   findBaseTypes, 
   formatTypeDefinition, 
@@ -70,9 +70,11 @@ export function extractTableTypes(tableName: string, tableType: Type, moduleDir:
   
   // Find all base types used (e.g., Json)
   const tableBaseTypes = new Set<string>();
-  [rowTypeStr, insertTypeStr, updateTypeStr].forEach(typeStr => {
-    findBaseTypes(typeStr).forEach(t => tableBaseTypes.add(t));
-  });
+  for (const typeStr of [rowTypeStr, insertTypeStr, updateTypeStr]) {
+    for (const t of findBaseTypes(typeStr)) {
+      tableBaseTypes.add(t);
+    }
+  }
   
   // Prepare imports if needed - now referencing our local base-types file
   const imports = tableBaseTypes.size > 0 
@@ -123,7 +125,7 @@ export type ${pascalTableName}FilterParams = {
 /**
  * Creates the main index file that re-exports all modules
  */
-export function createMainIndexFile(tablesType: Type, outputDir: string) {
+export function createMainIndexFile(tablesType: Type, outputDir: string, includeRpcFunctions = false) {
   const exports: string[] = [
     '// Auto-generated index file for database modules',
     '',
@@ -134,8 +136,16 @@ export function createMainIndexFile(tablesType: Type, outputDir: string) {
     '// Re-export storage module',
     "export * from './storage';",
     '',
-    '// Re-export all table modules'
   ];
+  
+  // Add RPC functions export if they exist
+  if (includeRpcFunctions) {
+    exports.push('// Re-export RPC functions');
+    exports.push("export * from './functions';");
+    exports.push('');
+  }
+  
+  exports.push('// Re-export all table modules');
 
   const tableSymbols = tablesType.getProperties();
   for (const tableSymbol of tableSymbols) {
