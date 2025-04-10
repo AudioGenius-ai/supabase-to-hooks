@@ -30,7 +30,6 @@ program
         const configPath = path.resolve(process.cwd(), options.config);
         if (fs.existsSync(configPath)) {
           const configFile = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          const mergedOptions = { ...options, ...configFile };
           Object.assign(options, configFile);
         } else {
           console.error(chalk.red(`❌ Config file not found: ${options.config}`));
